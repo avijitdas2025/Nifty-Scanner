@@ -99,7 +99,7 @@ def resample_ohlc(daily_df, timeframe):
     """Convert daily OHLCV into Weekly or Monthly bars."""
     if timeframe == "Daily":
         return daily_df
-    rule = "W" if timeframe == "Weekly" else "M"
+    rule = "W" if timeframe == "Weekly" else "ME"
     agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
     return daily_df.resample(rule).agg(agg).dropna()
 
