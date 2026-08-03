@@ -393,7 +393,9 @@ with right:
             st.markdown("##### Key Fundamentals")
             fund = fetch_fundamentals(ticker)
             if fund is None:
-                st.caption("Fundamental data not available for this stock.")
+                st.caption("Fundamental data not available for this stock right now.")
+                if st.button("🔄 Retry fundamentals"):
+                    st.rerun()
             else:
                 row1 = st.columns(4)
                 row1[0].metric("Market Cap", format_market_cap(fund["Market Cap"]))
