@@ -104,6 +104,57 @@ def resample_ohlc(daily_df, timeframe):
     return daily_df.resample(rule).agg(agg).dropna()
 
 
+@st.cache_data(ttl=60 * 60 * 12, show_spinner=False)
+def fetch_fundamentals(ticker):
+    """
+    Pull key fundamental metrics for a ticker via Yahoo Finance.
+    Returns a dict — any field Yahoo doesn't have for this stock is None.
+    """
+    try:
+        info = yf.Ticker(ticker).info
+    except Exception:
+        return None
+    if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
+        return None
+    return {
+        "Market Cap": info.get("marketCap"),
+        "P/E (TTM)": info.get("trailingPE"),
+        "Forward P/E": info.get("forwardPE"),
+        "P/B": info.get("priceToBook"),
+        "EPS (TTM)": info.get("trailingEps"),
+        "Dividend Yield": info.get("dividendYield"),
+        "52W High": info.get("fiftyTwoWeekHigh"),
+        "52W Low": info.get("fiftyTwoWeekLow"),
+        "ROE": info.get("returnOnEquity"),
+        "Debt/Equity": info.get("debtToEquity"),
+        "Profit Margin": info.get("profitMargins"),
+        "Sector": info.get("sector"),
+        "Industry": info.get("industry"),
+    }
+
+
+def format_market_cap(value):
+    """Format a raw INR market cap number as Cr (crores)."""
+    if value is None:
+        return "—"
+    crores = value / 1e7
+    if crores >= 1e5:
+        return f"₹{crores/1e5:,.2f} Lakh Cr"
+    return f"₹{crores:,.0f} Cr"
+
+
+def format_number(value, suffix="", decimals=2):
+    if value is None:
+        return "—"
+    return f"{value:,.{decimals}f}{suffix}"
+
+
+def format_percent(value):
+    if value is None:
+        return "—"
+    return f"{value*100:,.2f}%"
+
+
 # ----------------------------------------------------------------------
 # INDICATOR SETTINGS — saved locally so your periods/parameters and
 # on-chart selections persist across app restarts.
