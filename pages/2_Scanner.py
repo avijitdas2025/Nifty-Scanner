@@ -111,7 +111,12 @@ for i in list(st.session_state.rule_rows):
         rule_name = cols[1].selectbox(f"Rule {i+1}", list(RULE_OPTIONS.keys()), key=f"rule_name_{i}")
         val = None
         if rule_name in NEEDS_VALUE:
-            default_val = 60.0 if "RSI" in rule_name or "Stoch" in rule_name else 3.0
+            if "RSI" in rule_name or "Stoch" in rule_name:
+                default_val = 60.0
+            elif "rising" in rule_name or "falling" in rule_name:
+                default_val = 5.0
+            else:
+                default_val = 3.0
             val = st.sidebar.number_input(f"Value for Rule {i+1}", value=default_val, key=f"rule_val_{i}")
         if len(st.session_state.rule_rows) > 1:
             st.sidebar.button("Remove this rule", key=f"remove_{i}", on_click=remove_rule_row, args=(i,))
