@@ -19,7 +19,7 @@ st.write(
 )
 st.markdown(
     """
-- **📈 Chart** — a TradingView-style view. Click any stock in the watchlist
+- **📈 Chart** — Click any stock in the watchlist
   (defaults to all NIFTY 500) to load its candlestick chart. Scroll to zoom,
   drag to pan, hover a candle to see its Open/High/Low/Close.
 - **🔍 Scanner** — build rules across Daily/Weekly/Monthly timeframes, scan
