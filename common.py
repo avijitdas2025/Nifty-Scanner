@@ -125,12 +125,22 @@ def fetch_fundamentals(ticker):
         "Dividend Yield": info.get("dividendYield"),
         "52W High": info.get("fiftyTwoWeekHigh"),
         "52W Low": info.get("fiftyTwoWeekLow"),
-        "ROE": info.get("returnOnEquity"),
+        "ROE": info.get("returnOnEquity") or _fallback_roe(info),
         "Debt/Equity": info.get("debtToEquity"),
         "Profit Margin": info.get("profitMargins"),
         "Sector": info.get("sector"),
         "Industry": info.get("industry"),
     }
+
+
+def _fallback_roe(info):
+    """Some NSE stocks don't have Yahoo's direct returnOnEquity field.
+    Approximate ROE as EPS / Book Value per share when both are available."""
+    eps = info.get("trailingEps")
+    book_value = info.get("bookValue")
+    if eps and book_value and book_value != 0:
+        return eps / book_value
+    return None
 
 
 def format_market_cap(value):
@@ -404,6 +414,25 @@ def apply_theme(page_title, page_icon="📈"):
         [data-testid="stDataFrame"] {
             border: 1px solid #E4E2DC;
             border-radius: 8px;
+        }
+
+        /* Metrics: prevent value truncation ("...") when text is a bit long */
+        [data-testid="stMetric"] {
+            background-color: #FFFFFF;
+            border: 1px solid #E4E2DC;
+            border-radius: 8px;
+            padding: 0.7rem 0.8rem;
+        }
+        [data-testid="stMetricValue"] {
+            font-size: 1.1rem !important;
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: unset !important;
+            line-height: 1.3 !important;
+        }
+        [data-testid="stMetricLabel"] {
+            white-space: normal !important;
+            overflow: visible !important;
         }
 
         /* Metric-like captions */
