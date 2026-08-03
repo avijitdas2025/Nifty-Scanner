@@ -22,6 +22,7 @@ from common import (
     load_nifty500_list, fetch_daily_data, resample_ohlc, compute_indicators,
     list_saved_watchlists, load_watchlist, delete_watchlist, load_indicator_settings,
     save_indicator_settings, parse_periods, apply_theme,
+    fetch_fundamentals, format_market_cap, format_number, format_percent,
 )
 
 st.set_page_config(page_title="Chart — NIFTY 500", layout="wide", page_icon="📈")
@@ -385,3 +386,28 @@ with right:
             """
             total_height = 520 + len(oscillators) * 175
             components.html(CHART_HTML, height=total_height, scrolling=False)
+
+            # ---- Key fundamentals ----
+            st.markdown("##### Key Fundamentals")
+            fund = fetch_fundamentals(ticker)
+            if fund is None:
+                st.caption("Fundamental data not available for this stock.")
+            else:
+                f1, f2, f3, f4, f5, f6 = st.columns(6)
+                f1.metric("Market Cap", format_market_cap(fund["Market Cap"]))
+                f2.metric("P/E (TTM)", format_number(fund["P/E (TTM)"]))
+                f3.metric("P/B", format_number(fund["P/B"]))
+                f4.metric("EPS (TTM)", format_number(fund["EPS (TTM)"], suffix=""))
+                f5.metric("Dividend Yield", format_percent(fund["Dividend Yield"]))
+                f6.metric("ROE", format_percent(fund["ROE"]))
+
+                g1, g2, g3, g4, g5, g6 = st.columns(6)
+                g1.metric("52W High", format_number(fund["52W High"]))
+                g2.metric("52W Low", format_number(fund["52W Low"]))
+                g3.metric("Debt/Equity", format_number(fund["Debt/Equity"]))
+                g4.metric("Profit Margin", format_percent(fund["Profit Margin"]))
+                g5.metric("Forward P/E", format_number(fund["Forward P/E"]))
+                g6.metric("Sector", fund["Sector"] or "—")
+
+                if fund["Industry"]:
+                    st.caption(f"Industry: {fund['Industry']}")
