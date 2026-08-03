@@ -11,6 +11,7 @@ Shared helpers used by both pages/1_Chart.py and pages/2_Scanner.py:
 import io
 import os
 import json
+import time
 import datetime as dt
 
 import pandas as pd
@@ -83,16 +84,36 @@ def load_nifty500_list(sidebar=True):
 # PRICE DATA
 # ----------------------------------------------------------------------
 @st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
-def fetch_daily_data(ticker, years=5):
-    """Download daily OHLCV data for a ticker."""
+def _fetch_daily_data_cached(ticker, years):
+    """Cached only on success — a failure is never cached, so the next
+    attempt (even seconds later) gets a fresh try instead of being stuck."""
     end = dt.date.today()
     start = end - dt.timedelta(days=365 * years)
-    df = yf.download(ticker, start=start, end=end, interval="1d", progress=False, auto_adjust=True)
-    if df.empty:
+    last_error = None
+    for attempt in range(3):
+        try:
+            df = yf.download(ticker, start=start, end=end, interval="1d", progress=False, auto_adjust=True)
+            if df is not None and not df.empty:
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df = df.dropna()
+                if not df.empty:
+                    return df
+            last_error = ValueError("Empty data returned")
+        except Exception as e:
+            last_error = e
+        time.sleep(1.5 * (attempt + 1))  # back off before retrying — helps with rate limits
+    raise last_error or ValueError(f"No data available for {ticker}")
+
+
+def fetch_daily_data(ticker, years=5):
+    """Download daily OHLCV data for a ticker. Returns None if unavailable
+    after retries (e.g. Yahoo Finance rate-limited this request) — the
+    failure itself isn't cached, so the next click tries again fresh."""
+    try:
+        return _fetch_daily_data_cached(ticker, years)
+    except Exception:
         return None
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df.dropna()
 
 
 def resample_ohlc(daily_df, timeframe):
