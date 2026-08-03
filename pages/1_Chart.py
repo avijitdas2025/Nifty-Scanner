@@ -197,7 +197,9 @@ with right:
             daily = fetch_daily_data(ticker, years=years_history)
 
         if daily is None or daily.empty:
-            st.error(f"No price data found for {ticker}.")
+            st.error(f"No price data found for {ticker}. This is usually a temporary Yahoo Finance rate-limit.")
+            if st.button("🔄 Retry"):
+                st.rerun()
         else:
             df = resample_ohlc(daily, timeframe)
             df = compute_indicators(df, settings)
