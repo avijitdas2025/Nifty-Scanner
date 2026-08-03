@@ -126,16 +126,31 @@ def resample_ohlc(daily_df, timeframe):
 
 
 @st.cache_data(ttl=60 * 60 * 12, show_spinner=False)
+def _fetch_fundamentals_cached(ticker):
+    key_fields = ["marketCap", "trailingPE", "forwardPE", "priceToBook", "trailingEps", "dividendYield"]
+    last_error = None
+    for attempt in range(3):
+        try:
+            info = yf.Ticker(ticker).info
+            if info and any(info.get(k) is not None for k in key_fields):
+                return info
+            last_error = ValueError("No usable fundamentals fields in response")
+        except Exception as e:
+            last_error = e
+        time.sleep(1.5 * (attempt + 1))
+    raise last_error or ValueError(f"No fundamentals available for {ticker}")
+
+
 def fetch_fundamentals(ticker):
     """
     Pull key fundamental metrics for a ticker via Yahoo Finance.
     Returns a dict — any field Yahoo doesn't have for this stock is None.
+    Returns None only if the whole lookup fails after retries (failures
+    aren't cached, so the next visit gets a fresh attempt).
     """
     try:
-        info = yf.Ticker(ticker).info
+        info = _fetch_fundamentals_cached(ticker)
     except Exception:
-        return None
-    if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
         return None
     return {
         "Market Cap": info.get("marketCap"),
