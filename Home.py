@@ -8,8 +8,10 @@ Streamlit automatically turns the "pages" folder into a sidebar menu:
 """
 
 import streamlit as st
+from common import apply_theme
 
-st.set_page_config(page_title="NIFTY 500 Toolkit", layout="wide")
+st.set_page_config(page_title="NIFTY 500 Toolkit", layout="wide", page_icon="📊")
+apply_theme("NIFTY 500 Toolkit")
 
 st.title("📊 NIFTY 500 Toolkit")
 st.write(
