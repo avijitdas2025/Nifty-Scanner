@@ -290,6 +290,23 @@ def build_rule_options(settings):
         col = f"SMA{p}"
         rules[f"Price above SMA{p}"] = (lambda df, val, c=col: _last(df, "Close") > _last(df, c))
         rules[f"Price below SMA{p}"] = (lambda df, val, c=col: _last(df, "Close") < _last(df, c))
+        rules[f"SMA{p} rising (vs N bars ago)"] = (
+            lambda df, val, c=col: df[c].iloc[-1] > df[c].iloc[-1 - int(val)]
+        )
+        rules[f"SMA{p} falling (vs N bars ago)"] = (
+            lambda df, val, c=col: df[c].iloc[-1] < df[c].iloc[-1 - int(val)]
+        )
+        needs_value |= {f"SMA{p} rising (vs N bars ago)", f"SMA{p} falling (vs N bars ago)"}
+
+    for p in settings.get("ema_periods", [20, 50]):
+        col = f"EMA{p}"
+        rules[f"EMA{p} rising (vs N bars ago)"] = (
+            lambda df, val, c=col: df[c].iloc[-1] > df[c].iloc[-1 - int(val)]
+        )
+        rules[f"EMA{p} falling (vs N bars ago)"] = (
+            lambda df, val, c=col: df[c].iloc[-1] < df[c].iloc[-1 - int(val)]
+        )
+        needs_value |= {f"EMA{p} rising (vs N bars ago)", f"EMA{p} falling (vs N bars ago)"}
 
     sma_periods = sorted(settings.get("sma_periods", [20, 50, 200]))
     if len(sma_periods) >= 2:
