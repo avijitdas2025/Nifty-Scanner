@@ -71,7 +71,7 @@ with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False
 # ----------------------------------------------------------------------
 # TOP BAR: watchlist source, timeframe, search
 # ----------------------------------------------------------------------
-top_col1, top_col2, top_col3, top_col4 = st.columns([2, 2, 2.5, 1])
+top_col1, top_col2, top_col3, top_col4, top_col5 = st.columns([1.8, 1.8, 2.2, 1.2, 1])
 
 with top_col1:
     saved = list_saved_watchlists()
@@ -84,6 +84,9 @@ with top_col3:
     search = st.text_input("Search symbol or company", placeholder="e.g. RELIANCE or Reliance")
 
 with top_col4:
+    years_history = st.number_input("Years of history", min_value=1, max_value=25, value=5, step=1)
+
+with top_col5:
     st.write("")
     if source != "NIFTY 500 (all)":
         if st.session_state.get("confirm_delete") == source:
@@ -190,7 +193,7 @@ with right:
 
     if symbol:
         with st.spinner(f"Loading {symbol}..."):
-            daily = fetch_daily_data(ticker, years=5)
+            daily = fetch_daily_data(ticker, years=years_history)
 
         if daily is None or daily.empty:
             st.error(f"No price data found for {ticker}.")
