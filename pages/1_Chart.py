@@ -20,11 +20,12 @@ import streamlit.components.v1 as components
 
 from common import (
     load_nifty500_list, fetch_daily_data, resample_ohlc, compute_indicators,
-    list_saved_watchlists, load_watchlist, load_indicator_settings,
-    save_indicator_settings, parse_periods,
+    list_saved_watchlists, load_watchlist, delete_watchlist, load_indicator_settings,
+    save_indicator_settings, parse_periods, apply_theme,
 )
 
-st.set_page_config(page_title="Chart — NIFTY 500", layout="wide")
+st.set_page_config(page_title="Chart — NIFTY 500", layout="wide", page_icon="📈")
+apply_theme("Chart")
 
 if "active_symbol" not in st.session_state:
     st.session_state.active_symbol = None
@@ -70,7 +71,7 @@ with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False
 # ----------------------------------------------------------------------
 # TOP BAR: watchlist source, timeframe, search
 # ----------------------------------------------------------------------
-top_col1, top_col2, top_col3 = st.columns([2, 2, 3])
+top_col1, top_col2, top_col3, top_col4 = st.columns([2, 2, 2.5, 1])
 
 with top_col1:
     saved = list_saved_watchlists()
@@ -81,6 +82,21 @@ with top_col2:
 
 with top_col3:
     search = st.text_input("Search symbol or company", placeholder="e.g. RELIANCE or Reliance")
+
+with top_col4:
+    st.write("")
+    if source != "NIFTY 500 (all)":
+        if st.session_state.get("confirm_delete") == source:
+            if st.button(f"⚠️ Confirm delete '{source}'", type="primary"):
+                delete_watchlist(source)
+                st.session_state.confirm_delete = None
+                st.session_state.active_symbol = None
+                st.success(f"Deleted '{source}'.")
+                st.rerun()
+        else:
+            if st.button("🗑️ Delete watchlist"):
+                st.session_state.confirm_delete = source
+                st.rerun()
 
 # ----------------------------------------------------------------------
 # INDICATOR PICKER (choices built from your configured periods above)
