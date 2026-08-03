@@ -11,6 +11,8 @@ parameters) are configurable in the sidebar and saved to
 `indicator_settings.json`, shared with the Chart page.
 """
 
+import time
+
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
@@ -147,6 +149,7 @@ if run_scan:
         progress = st.progress(0, text="Starting scan...")
         results = []
         cache = {}
+        failed = []
         total = len(tickers)
         primary_rsi_col = f"RSI{settings['rsi_periods'][0]}"
 
@@ -155,6 +158,7 @@ if run_scan:
             try:
                 daily = fetch_daily_data(row.YF_Ticker, years=years_history)
                 if daily is None or daily.empty:
+                    failed.append(row.Symbol)
                     continue
 
                 tf_dfs = {}
@@ -177,13 +181,22 @@ if run_scan:
                             row_result[f"{tf} {primary_rsi_col}"] = round(l[primary_rsi_col], 1) if pd.notna(l[primary_rsi_col]) else None
                     results.append(row_result)
             except Exception:
+                failed.append(row.Symbol)
                 continue
+            time.sleep(0.15)  # small pause between requests — reduces Yahoo Finance rate-limiting
 
         progress.empty()
         st.session_state.scan_results = pd.DataFrame(results)
         st.session_state.scan_cache = cache
         st.session_state.scan_timeframes = needed_timeframes
         st.success(f"Scan complete. {len(results)} of {total} stocks matched your rules.")
+        if failed:
+            with st.expander(f"⚠️ {len(failed)} stock(s) had no price data available (click to see which)"):
+                st.write(", ".join(failed))
+                st.caption(
+                    "Usually a temporary Yahoo Finance rate-limit, not a permanent problem — "
+                    "try scanning again in a minute or two."
+                )
 
 
 # ----------------------------------------------------------------------
