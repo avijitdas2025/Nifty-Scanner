@@ -19,10 +19,11 @@ from plotly.subplots import make_subplots
 from common import (
     load_nifty500_list, fetch_daily_data, resample_ohlc, save_watchlist,
     compute_indicators, load_indicator_settings, save_indicator_settings,
-    parse_periods, build_rule_options, passes_rules,
+    parse_periods, build_rule_options, passes_rules, apply_theme,
 )
 
-st.set_page_config(page_title="Scanner — NIFTY 500", layout="wide")
+st.set_page_config(page_title="Scanner — NIFTY 500", layout="wide", page_icon="🔍")
+apply_theme("Scanner")
 st.title("🔍 NIFTY 500 Scanner")
 st.caption(
     "Build rules that can mix Daily, Weekly, and Monthly indicators, scan "
