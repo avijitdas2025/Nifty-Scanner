@@ -284,6 +284,104 @@ def passes_rules(tf_dfs, active_rules, rule_options):
         return False
 
 
+def apply_theme(page_title, page_icon="📈"):
+    """
+    Call once at the top of every page, right after st.set_page_config().
+    Applies consistent typography, spacing, and component styling on top of
+    the base theme in .streamlit/config.toml.
+    """
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        html, body, [class*="css"] {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        /* Tighter, cleaner top padding */
+        .block-container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 1400px;
+        }
+
+        /* Page titles */
+        h1 {
+            font-weight: 700 !important;
+            letter-spacing: -0.02em;
+            font-size: 1.9rem !important;
+        }
+        h2, h3 {
+            font-weight: 600 !important;
+            letter-spacing: -0.01em;
+        }
+
+        /* Buttons: flatter, more deliberate */
+        .stButton > button {
+            border-radius: 6px;
+            border: 1px solid #E4E2DC;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        .stButton > button:hover {
+            border-color: #1D9E75;
+            color: #1D9E75;
+        }
+        .stButton > button[kind="primary"] {
+            background-color: #1D9E75;
+            border: none;
+        }
+        .stButton > button[kind="primary"]:hover {
+            background-color: #17835F;
+        }
+
+        /* Sidebar: subtle separation from main content */
+        section[data-testid="stSidebar"] {
+            background-color: #F3F2EE;
+            border-right: 1px solid #E4E2DC;
+        }
+        section[data-testid="stSidebar"] h2 {
+            font-size: 0.95rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #6B6A63;
+            margin-top: 1.2rem;
+        }
+
+        /* Dataframes / tables */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #E4E2DC;
+            border-radius: 8px;
+        }
+
+        /* Metric-like captions */
+        .stCaption, [data-testid="stCaptionContainer"] {
+            color: #8B8A82 !important;
+        }
+
+        /* Hide default Streamlit chrome for a cleaner, product-like feel */
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+
+        /* Input fields */
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div,
+        .stNumberInput > div > div > input {
+            border-radius: 6px;
+        }
+
+        /* Expander header */
+        .streamlit-expanderHeader {
+            font-weight: 500;
+            border-radius: 6px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ----------------------------------------------------------------------
 # WATCHLISTS (saved as local CSV files under ./watchlists/)
 # ----------------------------------------------------------------------
@@ -314,3 +412,11 @@ def load_watchlist(name):
     if os.path.exists(path):
         return pd.read_csv(path)
     return None
+
+
+def delete_watchlist(name):
+    path = os.path.join(WATCHLIST_DIR, f"{name}.csv")
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
