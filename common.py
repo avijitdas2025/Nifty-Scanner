@@ -187,7 +187,12 @@ def _fetch_daily_data_cached(ticker, years, data_source):
             if df is not None and not df.empty:
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
-                df = df.dropna()
+                # Only drop rows missing essential price fields — a NaN in
+                # Volume alone shouldn't discard an otherwise valid day
+                # (this was silently creating gaps like a missing Jul 31 candle).
+                df = df.dropna(subset=["Open", "High", "Low", "Close"])
+                df = df.sort_index()
+                df = df[~df.index.duplicated(keep="last")]
                 if not df.empty:
                     return df
             last_error = ValueError("Empty data returned")
