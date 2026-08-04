@@ -83,13 +83,104 @@ def load_nifty500_list(sidebar=True):
 # ----------------------------------------------------------------------
 # PRICE DATA
 # ----------------------------------------------------------------------
+NSE_HEADERS = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "accept-language": "en-US,en;q=0.9,en-IN;q=0.8",
+    "user-agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+    ),
+}
+
+
+def _nse_session():
+    s = requests.Session()
+    s.headers.update(NSE_HEADERS)
+    s.get("https://www.nseindia.com", timeout=10)
+    s.get("https://www.nseindia.com/option-chain", timeout=10)
+    return s
+
+
+def _fetch_daily_data_nse(symbol, years):
+    """
+    Fetch daily OHLCV directly from NSE's own historical API (no Yahoo
+    Finance involved). This is the official source, but NSE frequently
+    blocks datacenter/cloud IPs outright and requires a browser-style
+    session handshake — so it tends to work well locally and may fail
+    entirely when run on cloud hosting. Requests are chunked into 40-day
+    windows (NSE's own limit) reusing a single session for efficiency.
+    """
+    end = dt.date.today() + dt.timedelta(days=1)
+    start = end - dt.timedelta(days=365 * years)
+    session = _nse_session()
+    records = []
+    chunk_start = start
+    while chunk_start <= end:
+        chunk_end = min(chunk_start + dt.timedelta(days=39), end)
+        url = (
+            f"https://www.nseindia.com/api/historical/cm/equity?symbol={symbol}"
+            f"&series=[%22EQ%22]&from={chunk_start.strftime('%d-%m-%Y')}&to={chunk_end.strftime('%d-%m-%Y')}"
+        )
+        resp = session.get(url, timeout=15)
+        data = resp.json().get("data", [])
+        if data:
+            records.extend(data)
+        chunk_start = chunk_end + dt.timedelta(days=1)
+
+    if not records:
+        raise ValueError(f"No NSE data returned for {symbol}")
+
+    df = pd.DataFrame.from_records(records)
+    col_map = {}
+    for col in df.columns:
+        u = col.upper()
+        if "TIMESTAMP" in u and "Date" not in col_map.values():
+            col_map[col] = "Date"
+        elif "OPEN" in u:
+            col_map[col] = "Open"
+        elif "HIGH" in u and "52" not in u:
+            col_map[col] = "High"
+        elif "LOW" in u and "52" not in u:
+            col_map[col] = "Low"
+        elif "CLOS" in u:
+            col_map[col] = "Close"
+        elif "TOT_TRADED_QTY" in u:
+            col_map[col] = "Volume"
+    df = df.rename(columns=col_map)
+
+    required = ["Date", "Open", "High", "Low", "Close", "Volume"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"NSE response missing expected fields: {missing}")
+
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.set_index("Date")[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+    df = df.sort_index()
+    return df[~df.index.duplicated(keep="last")]
+
+
 @st.cache_data(ttl=60 * 60 * 6, show_spinner=False)
-def _fetch_daily_data_cached(ticker, years):
+def _fetch_daily_data_cached(ticker, years, data_source):
     """Cached only on success — a failure is never cached, so the next
     attempt (even seconds later) gets a fresh try instead of being stuck."""
-    end = dt.date.today()
-    start = end - dt.timedelta(days=365 * years)
+    symbol = ticker.replace(".NS", "").replace(".BO", "")
     last_error = None
+
+    if data_source in ("nse", "nse_then_yahoo"):
+        try:
+            df = _fetch_daily_data_nse(symbol, years)
+            if df is not None and not df.empty:
+                return df
+        except Exception as e:
+            last_error = e
+            if data_source == "nse":
+                raise last_error
+
+    # Yahoo Finance (default source, and fallback for "nse_then_yahoo")
+    # end is padded by 1 day: yfinance treats `end` as exclusive, and combined
+    # with UTC/IST timezone rounding this can otherwise cut off yesterday's candle.
+    end = dt.date.today() + dt.timedelta(days=1)
+    start = end - dt.timedelta(days=365 * years)
     for attempt in range(3):
         try:
             df = yf.download(ticker, start=start, end=end, interval="1d", progress=False, auto_adjust=True)
@@ -102,16 +193,21 @@ def _fetch_daily_data_cached(ticker, years):
             last_error = ValueError("Empty data returned")
         except Exception as e:
             last_error = e
-        time.sleep(1.5 * (attempt + 1))  # back off before retrying — helps with rate limits
+        time.sleep(1.5 * (attempt + 1))
     raise last_error or ValueError(f"No data available for {ticker}")
 
 
-def fetch_daily_data(ticker, years=5):
-    """Download daily OHLCV data for a ticker. Returns None if unavailable
-    after retries (e.g. Yahoo Finance rate-limited this request) — the
-    failure itself isn't cached, so the next click tries again fresh."""
+def fetch_daily_data(ticker, years=5, data_source="yahoo"):
+    """
+    Download daily OHLCV data for a ticker.
+    data_source: "yahoo" (default, fastest/most reliable for bulk scanning),
+                 "nse" (official NSE data, may fail on cloud hosting),
+                 "nse_then_yahoo" (try NSE first, fall back to Yahoo).
+    Returns None if unavailable after retries — the failure itself isn't
+    cached, so the next click tries again fresh.
+    """
     try:
-        return _fetch_daily_data_cached(ticker, years)
+        return _fetch_daily_data_cached(ticker, years, data_source)
     except Exception:
         return None
 
@@ -213,6 +309,7 @@ DEFAULT_SETTINGS = {
     "bollinger": {"window": 20, "dev": 2.0},
     "stochastic": {"k": 14, "d": 3},
     "adx_period": 14,
+    "data_source": "yahoo",  # "yahoo" | "nse" | "nse_then_yahoo"
     # Which computed indicators are actually switched on, per page:
     "chart_overlays": ["SMA 20", "SMA 50", "SMA 200"],
     "chart_oscillators": ["RSI 14"],
