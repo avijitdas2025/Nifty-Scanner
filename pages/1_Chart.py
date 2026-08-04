@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 from common import (
     load_nifty500_list, fetch_daily_data, resample_ohlc, compute_indicators,
     list_saved_watchlists, load_watchlist, delete_watchlist, load_indicator_settings,
-    save_indicator_settings, parse_periods, apply_theme,
+    save_indicator_settings, parse_periods, apply_theme, _fetch_daily_data_cached,
     fetch_fundamentals, format_market_cap, format_number, format_percent,
 )
 
@@ -41,6 +41,14 @@ settings = st.session_state.indicator_settings
 # ----------------------------------------------------------------------
 st.sidebar.header("Indicator Parameters")
 with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False):
+    source_options = {"yahoo": "Yahoo Finance (fast, default)", "nse": "NSE Direct (official, slower)", "nse_then_yahoo": "NSE Direct, fall back to Yahoo"}
+    data_source_label = st.selectbox(
+        "Price data source", list(source_options.values()),
+        index=list(source_options.keys()).index(settings.get("data_source", "yahoo")),
+        help="NSE Direct hits NSE's own API. It's the official source but often blocked from cloud hosting and slower per request — best tried when running locally.",
+    )
+    data_source = [k for k, v in source_options.items() if v == data_source_label][0]
+
     sma_text = st.text_input("SMA periods (comma-separated)", value=",".join(str(p) for p in settings["sma_periods"]))
     ema_text = st.text_input("EMA periods (comma-separated)", value=",".join(str(p) for p in settings["ema_periods"]))
     rsi_text = st.text_input("RSI periods (comma-separated)", value=",".join(str(p) for p in settings["rsi_periods"]))
@@ -57,6 +65,7 @@ with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False
     adx_period = st.number_input("ADX period", value=settings["adx_period"], min_value=1)
 
     if st.button("💾 Save indicator parameters"):
+        settings["data_source"] = data_source
         settings["sma_periods"] = parse_periods(sma_text, settings["sma_periods"])
         settings["ema_periods"] = parse_periods(ema_text, settings["ema_periods"])
         settings["rsi_periods"] = parse_periods(rsi_text, settings["rsi_periods"])
@@ -72,7 +81,7 @@ with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False
 # ----------------------------------------------------------------------
 # TOP BAR: watchlist source, timeframe, search
 # ----------------------------------------------------------------------
-top_col1, top_col2, top_col3, top_col4, top_col5 = st.columns([1.8, 1.8, 2.2, 1.2, 1])
+top_col1, top_col2, top_col3, top_col4, top_col5, top_col6 = st.columns([1.6, 1.6, 2, 1.1, 1, 1])
 
 with top_col1:
     saved = list_saved_watchlists()
@@ -88,6 +97,12 @@ with top_col4:
     years_history = st.number_input("Years of history", min_value=1, max_value=25, value=5, step=1)
 
 with top_col5:
+    st.write("")
+    if st.button("🔄 Force refresh", help="Clears cached price data and re-fetches from scratch"):
+        _fetch_daily_data_cached.clear()
+        st.rerun()
+
+with top_col6:
     st.write("")
     if source != "NIFTY 500 (all)":
         if st.session_state.get("confirm_delete") == source:
@@ -194,7 +209,7 @@ with right:
 
     if symbol:
         with st.spinner(f"Loading {symbol}..."):
-            daily = fetch_daily_data(ticker, years=years_history)
+            daily = fetch_daily_data(ticker, years=years_history, data_source=settings.get("data_source", "yahoo"))
 
         if daily is None or daily.empty:
             st.error(f"No price data found for {ticker}. This is usually a temporary Yahoo Finance rate-limit.")
