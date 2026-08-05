@@ -43,6 +43,14 @@ settings = st.session_state.indicator_settings
 # ----------------------------------------------------------------------
 st.sidebar.header("1. Indicator Parameters")
 with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False):
+    source_options = {"yahoo": "Yahoo Finance (fast, default)", "nse": "NSE Direct (official, slower)", "nse_then_yahoo": "NSE Direct, fall back to Yahoo"}
+    data_source_label = st.selectbox(
+        "Price data source", list(source_options.values()),
+        index=list(source_options.keys()).index(settings.get("data_source", "yahoo")),
+        help="NSE Direct is much slower per stock (multiple requests per stock) and often blocked from cloud hosting — Yahoo is strongly recommended for scanning all 500 stocks.",
+    )
+    data_source = [k for k, v in source_options.items() if v == data_source_label][0]
+
     sma_text = st.text_input("SMA periods (comma-separated)", value=",".join(str(p) for p in settings["sma_periods"]))
     ema_text = st.text_input("EMA periods (comma-separated)", value=",".join(str(p) for p in settings["ema_periods"]))
     rsi_text = st.text_input("RSI periods (comma-separated)", value=",".join(str(p) for p in settings["rsi_periods"]))
@@ -59,6 +67,7 @@ with st.sidebar.expander("⚙️ Customise periods / parameters", expanded=False
     adx_period = st.number_input("ADX period", value=settings["adx_period"], min_value=1)
 
     if st.button("💾 Save indicator parameters"):
+        settings["data_source"] = data_source
         settings["sma_periods"] = parse_periods(sma_text, settings["sma_periods"])
         settings["ema_periods"] = parse_periods(ema_text, settings["ema_periods"])
         settings["rsi_periods"] = parse_periods(rsi_text, settings["rsi_periods"])
@@ -126,6 +135,11 @@ for i in list(st.session_state.rule_rows):
         active_rules.append((tf, rule_name, val))
 
 st.sidebar.header("5. Run")
+if settings.get("data_source", "yahoo") != "yahoo":
+    st.sidebar.warning(
+        "Data source is set to NSE Direct — scanning many stocks will be "
+        "considerably slower (and may fail on cloud hosting) than Yahoo Finance."
+    )
 max_stocks = st.sidebar.slider("Limit scan to first N stocks (lower = faster test run)", 10, 500, 500)
 run_scan = st.sidebar.button("🔍 Scan NIFTY 500", type="primary")
 
@@ -156,7 +170,7 @@ if run_scan:
         for idx, row in enumerate(tickers.itertuples()):
             progress.progress((idx + 1) / total, text=f"Scanning {row.Symbol} ({idx+1}/{total})")
             try:
-                daily = fetch_daily_data(row.YF_Ticker, years=years_history)
+                daily = fetch_daily_data(row.YF_Ticker, years=years_history, data_source=settings.get("data_source", "yahoo"))
                 if daily is None or daily.empty:
                     failed.append(row.Symbol)
                     continue
