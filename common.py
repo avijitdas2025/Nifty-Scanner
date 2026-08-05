@@ -15,7 +15,6 @@ import time
 import datetime as dt
 
 import pandas as pd
-import numpy as np
 import requests
 import streamlit as st
 import yfinance as yf
@@ -387,8 +386,6 @@ def compute_indicators(df, settings=None):
     adx = ta.trend.ADXIndicator(high, low, close, window=int(s.get("adx_period", 14)))
     df["ADX"] = adx.adx()
 
-    df = detect_patterns(df)
-
     return df
 
 
@@ -399,112 +396,6 @@ def parse_periods(text, fallback):
         return vals if vals else fallback
     except Exception:
         return fallback
-
-
-# ----------------------------------------------------------------------
-# CANDLESTICK PRICE ACTION PATTERNS
-# Pure pandas/numpy — no TA-Lib, so nothing here needs a C compiler to
-# install. "Trend context" for reversal patterns (Hammer, Shooting Star,
-# etc.) compares the close 1 bar ago to the close 6 bars ago as a simple
-# stand-in for "was this stock in an uptrend/downtrend going into this bar".
-PATTERN_NAMES = [
-    "Doji", "Hammer", "Hanging Man", "Inverted Hammer", "Shooting Star",
-    "Bullish Engulfing", "Bearish Engulfing", "Bullish Harami", "Bearish Harami",
-    "Piercing Line", "Dark Cloud Cover", "Morning Star", "Evening Star",
-    "Three White Soldiers", "Three Black Crows",
-]
-
-BULLISH_PATTERNS = {
-    "Hammer", "Inverted Hammer", "Bullish Engulfing", "Bullish Harami",
-    "Piercing Line", "Morning Star", "Three White Soldiers",
-}
-BEARISH_PATTERNS = {
-    "Hanging Man", "Shooting Star", "Bearish Engulfing", "Bearish Harami",
-    "Dark Cloud Cover", "Evening Star", "Three Black Crows",
-}
-
-
-def detect_patterns(df):
-    """
-    Adds a 'Patterns' column: a list of pattern names matched on that bar
-    (usually empty). Also adds 'PatternDirection': 'bullish', 'bearish',
-    'mixed', or None, based on which named patterns matched.
-    """
-    d = df.copy()
-    o, h, l, c = d["Open"], d["High"], d["Low"], d["Close"]
-    body = (c - o).abs()
-    rng = (h - l).replace(0, np.nan)
-    upper = h - pd.concat([o, c], axis=1).max(axis=1)
-    lower = pd.concat([o, c], axis=1).min(axis=1) - l
-    bullish = c > o
-    bearish = c < o
-
-    prior_close = c.shift(1)
-    past_close = c.shift(6)
-    downtrend = prior_close < past_close
-    uptrend = prior_close > past_close
-
-    prev_body_hi = pd.concat([o.shift(1), c.shift(1)], axis=1).max(axis=1)
-    prev_body_lo = pd.concat([o.shift(1), c.shift(1)], axis=1).min(axis=1)
-    prev_mid = (o.shift(1) + c.shift(1)) / 2
-
-    matches = {}
-    matches["Doji"] = body <= 0.1 * rng
-    matches["Hammer"] = (lower >= 2 * body) & (upper <= 0.1 * rng) & downtrend
-    matches["Hanging Man"] = (lower >= 2 * body) & (upper <= 0.1 * rng) & uptrend
-    matches["Inverted Hammer"] = (upper >= 2 * body) & (lower <= 0.1 * rng) & downtrend
-    matches["Shooting Star"] = (upper >= 2 * body) & (lower <= 0.1 * rng) & uptrend
-
-    matches["Bullish Engulfing"] = bearish.shift(1) & bullish & (o <= c.shift(1)) & (c >= o.shift(1))
-    matches["Bearish Engulfing"] = bullish.shift(1) & bearish & (o >= c.shift(1)) & (c <= o.shift(1))
-
-    matches["Bullish Harami"] = bearish.shift(1) & bullish & (o >= prev_body_lo) & (c <= prev_body_hi)
-    matches["Bearish Harami"] = bullish.shift(1) & bearish & (o <= prev_body_hi) & (c >= prev_body_lo)
-
-    matches["Piercing Line"] = bearish.shift(1) & bullish & (o < c.shift(1)) & (c > prev_mid) & (c < o.shift(1))
-    matches["Dark Cloud Cover"] = bullish.shift(1) & bearish & (o > c.shift(1)) & (c < prev_mid) & (c > o.shift(1))
-
-    first_bearish = bearish.shift(2)
-    first_body = body.shift(2)
-    star_small = body.shift(1) <= 0.3 * rng.shift(1)
-    gap_down = pd.concat([o.shift(1), c.shift(1)], axis=1).max(axis=1) < c.shift(2)
-    third_mid_up = c > (o.shift(2) + c.shift(2)) / 2
-    matches["Morning Star"] = first_bearish & star_small & gap_down & bullish & third_mid_up & (first_body > 0)
-
-    first_bullish = bullish.shift(2)
-    gap_up = pd.concat([o.shift(1), c.shift(1)], axis=1).min(axis=1) > c.shift(2)
-    third_mid_down = c < (o.shift(2) + c.shift(2)) / 2
-    matches["Evening Star"] = first_bullish & star_small & gap_up & bearish & third_mid_down & (first_body > 0)
-
-    matches["Three White Soldiers"] = (
-        bullish & bullish.shift(1) & bullish.shift(2)
-        & (c > c.shift(1)) & (c.shift(1) > c.shift(2))
-        & (o > o.shift(1)) & (o.shift(1) > o.shift(2))
-        & (o < c.shift(1)) & (o.shift(1) < c.shift(2))
-    )
-    matches["Three Black Crows"] = (
-        bearish & bearish.shift(1) & bearish.shift(2)
-        & (c < c.shift(1)) & (c.shift(1) < c.shift(2))
-        & (o < o.shift(1)) & (o.shift(1) < o.shift(2))
-        & (o > c.shift(1)) & (o.shift(1) > c.shift(2))
-    )
-
-    pattern_df = pd.DataFrame(matches, index=d.index).fillna(False)
-    d["Patterns"] = pattern_df.apply(lambda row: [name for name in PATTERN_NAMES if row.get(name)], axis=1)
-
-    def _direction(names):
-        has_bull = any(n in BULLISH_PATTERNS for n in names)
-        has_bear = any(n in BEARISH_PATTERNS for n in names)
-        if has_bull and not has_bear:
-            return "bullish"
-        if has_bear and not has_bull:
-            return "bearish"
-        if has_bull and has_bear:
-            return "mixed"
-        return None
-
-    d["PatternDirection"] = d["Patterns"].apply(_direction)
-    return d
 
 
 # ----------------------------------------------------------------------
@@ -588,11 +479,6 @@ def build_rule_options(settings):
 
     rules["ADX above (strong trend)"] = lambda df, val: _last(df, "ADX") > val
     needs_value.add("ADX above (strong trend)")
-
-    for pname in PATTERN_NAMES:
-        rules[f"Pattern: {pname} (last bar)"] = (
-            lambda df, val, p=pname: p in (df["Patterns"].iloc[-1] if "Patterns" in df.columns else [])
-        )
 
     return rules, needs_value
 
