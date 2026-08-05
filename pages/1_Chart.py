@@ -15,6 +15,7 @@ Right: a candlestick chart (TradingView's own "lightweight-charts" library)
 
 import json
 
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -23,6 +24,7 @@ from common import (
     list_saved_watchlists, load_watchlist, delete_watchlist, load_indicator_settings,
     save_indicator_settings, parse_periods, apply_theme, _fetch_daily_data_cached,
     fetch_fundamentals, format_market_cap, format_number, format_percent,
+    PATTERN_NAMES,
 )
 
 st.set_page_config(page_title="Chart — NIFTY 500", layout="wide", page_icon="📈")
@@ -151,6 +153,20 @@ with ind_col4:
         st.session_state.indicator_settings = settings
         st.success("Saved.")
 
+pat_col1, pat_col2 = st.columns([4, 1])
+with pat_col1:
+    patterns_to_show = st.multiselect(
+        "Candlestick patterns (marked on the chart)", PATTERN_NAMES,
+        default=[p for p in settings.get("chart_patterns", []) if p in PATTERN_NAMES],
+    )
+with pat_col2:
+    st.write("")
+    if st.button("💾 Save patterns"):
+        settings["chart_patterns"] = patterns_to_show
+        save_indicator_settings(settings)
+        st.session_state.indicator_settings = settings
+        st.success("Saved.")
+
 OVERLAY_COLORS_PALETTE = ["#378ADD", "#7F77DD", "#D4A24C", "#1BAF7A", "#D85A30", "#534AB7"]
 
 # ----------------------------------------------------------------------
@@ -220,6 +236,24 @@ with right:
             df = compute_indicators(df, settings)
             dates = [idx.strftime("%Y-%m-%d") for idx in df.index]
 
+            with st.expander("🔍 Data diagnostics (check for gaps here)"):
+                st.caption(
+                    f"{len(df)} bars fetched. Range: {df.index.min().date()} to {df.index.max().date()}. "
+                    f"Source: {settings.get('data_source', 'yahoo')}."
+                )
+                if timeframe == "Daily":
+                    expected_bdays = pd.bdate_range(df.index.min(), df.index.max())
+                    missing = sorted(set(expected_bdays.date) - set(df.index.date))
+                    if missing:
+                        st.warning(
+                            f"{len(missing)} weekday(s) with no candle in the fetched data "
+                            f"(some may be genuine exchange holidays — not all gaps are bugs):"
+                        )
+                        st.write(", ".join(str(d) for d in missing[-15:]))
+                    else:
+                        st.success("No missing weekdays in the fetched range.")
+                st.dataframe(df.tail(10)[["Open", "High", "Low", "Close", "Volume"]], use_container_width=True)
+
             candles = [
                 {
                     "time": idx.strftime("%Y-%m-%d"),
@@ -242,6 +276,28 @@ with right:
             # time axis lines up bar-for-bar with the main chart (needed so the
             # panes pan/zoom together correctly).
             anchor = [{"time": d, "value": 0} for d in dates]
+
+            markers = []
+            if patterns_to_show:
+                for idx, r in df.iterrows():
+                    matched = [p for p in r.get("Patterns", []) if p in patterns_to_show]
+                    if not matched:
+                        continue
+                    direction = r.get("PatternDirection")
+                    if direction == "bullish":
+                        color, position, shape = "#1D9E75", "belowBar", "arrowUp"
+                    elif direction == "bearish":
+                        color, position, shape = "#D85A30", "aboveBar", "arrowDown"
+                    else:
+                        color, position, shape = "#D4A24C", "aboveBar", "circle"
+                    label = matched[0] if len(matched) == 1 else f"{matched[0]} +{len(matched)-1}"
+                    markers.append({
+                        "time": idx.strftime("%Y-%m-%d"),
+                        "position": position,
+                        "color": color,
+                        "shape": shape,
+                        "text": label,
+                    })
 
             def series_data(col):
                 sub = df[col].dropna()
@@ -363,6 +419,7 @@ with right:
                 wickUpColor: '#1D9E75', wickDownColor: '#D85A30'
               }});
               candleSeries.setData({json.dumps(candles)});
+              candleSeries.setMarkers({json.dumps(markers)});
 
               {volume_js}
               {overlay_js}
